@@ -603,48 +603,81 @@
     });
   }
 
-  /* --- Convit a instal·lar --- */
+  /* --- Convit a instal·lar -------------------------------------------------
+     Es un suggeriment, no un moble: ha de desapareixer sol i no tornar mai
+     mes un cop l'aplicacio esta instal·lada. A iOS no hi ha cap manera de
+     preguntar si ja ho esta, aixi que el limitem a tres apariciones i prou. */
   var bar = document.getElementById('install');
   var why = document.getElementById('installWhy');
   var go = document.getElementById('installGo');
   var no = document.getElementById('installNo');
   var deferred = null;
+  var KEY = 'qc-install-hint';
+  var MAX = 3;
 
-  function dismissed() {
-    try { return localStorage.getItem('install-dismissed') === '1'; } catch (e) { return false; }
+  function readState() {
+    try { return localStorage.getItem(KEY) || ''; } catch (e) { return 'off'; }
   }
-  function remember() {
-    try { localStorage.setItem('install-dismissed', '1'); } catch (e) {}
+  function writeState(v) {
+    try { localStorage.setItem(KEY, v); } catch (e) {}
   }
   function hide() { bar.hidden = true; }
+  function never() { hide(); writeState('off'); }   // no tornar a oferir-ho mai
+
+  function show() {
+    var seen = parseInt(readState(), 10) || 0;
+    if (readState() === 'off' || seen >= MAX) return;
+    writeState(String(seen + 1));
+    bar.hidden = false;
+    setTimeout(function () { if (!bar.hidden) hide(); }, 9000);
+  }
 
   // Dins d'un marc (una previsualitzacio) no es pot instal·lar: no molestem.
   var topLevel = (function () { try { return window.top === window.self; } catch (e) { return false; } })();
   var iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-  if (!standalone && topLevel && !dismissed()) {
+  // Si alguna vegada s'obre com a aplicacio, el convit ja no te sentit.
+  if (standalone) {
+    never();
+  } else if (topLevel && readState() !== 'off') {
     window.addEventListener('beforeinstallprompt', function (e) {
-      e.preventDefault();
+      e.preventDefault();      // volem el nostre boto, no el de Chrome
       deferred = e;
-      bar.hidden = false;
+      show();
     });
     if (iOS) {
       why.textContent = 'Comparteix \u2192 Afegeix a la pantalla d\u2019inici.';
       go.hidden = true;
-      setTimeout(function () { bar.hidden = false; }, 1400);
+      setTimeout(show, 1400);
     }
   }
 
-  go.addEventListener('click', function () {
-    if (!deferred) return hide();
-    hide();
-    deferred.prompt();
-    deferred.userChoice.then(function () { deferred = null; }).catch(function () {});
+  // Si el sistema passa la finestra a mode aplicacio amb la pagina oberta.
+  ['standalone', 'fullscreen', 'minimal-ui'].forEach(function (mode) {
+    try {
+      matchMedia('(display-mode: ' + mode + ')')
+        .addEventListener('change', function (e) { if (e.matches) never(); });
+    } catch (e) {}
   });
-  no.addEventListener('click', function () { hide(); remember(); });
 
-  window.addEventListener('appinstalled', function () { hide(); remember(); });
+  // Jugar mana: al primer dit, el convit marxa de la pantalla.
+  document.addEventListener('pointerdown', function (e) {
+    if (!bar.hidden && !bar.contains(e.target)) hide();
+  }, true);
+
+  go.addEventListener('click', function () {
+    hide();
+    if (!deferred) return;
+    deferred.prompt();
+    deferred.userChoice.then(function (r) {
+      if (r && r.outcome === 'accepted') never();
+      deferred = null;
+    }).catch(function () {});
+  });
+  no.addEventListener('click', never);
+
+  window.addEventListener('appinstalled', never);
 })();
 </script>
 </body>
