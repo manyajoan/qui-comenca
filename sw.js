@@ -1,6 +1,6 @@
 /* Service worker: desa l'aplicacio al mobil perque arrenqui a l'instant
    i funcioni sense connexio. Pujar la versio buida la copia antiga. */
-const VERSION = 'qui-comenca-v2';
+const VERSION = 'qui-comenca-v3';
 const SHELL = [
   './',
   './index.html',

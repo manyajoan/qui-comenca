@@ -528,69 +528,14 @@
   /* Res de rebotar ni de refrescar estirant: aixo es el que delata un navegador. */
   html, body{ overscroll-behavior:none; }
   body{ -webkit-user-select:none; user-select:none; }
-
-  /* Convit a instal·lar. Nomes surt al navegador, mai dins de l'app ja instal·lada. */
-  .install{
-    position:fixed; left:12px; right:12px;
-    bottom:calc(12px + env(safe-area-inset-bottom, 0px));
-    z-index:20;
-    display:flex; align-items:center; gap:12px;
-    padding:11px 12px;
-    border-radius:16px;
-    background:rgba(22,40,44,.93);
-    border:1px solid rgba(237,231,218,.14);
-    box-shadow:0 12px 34px rgba(0,0,0,.5);
-    backdrop-filter:blur(12px);
-    -webkit-backdrop-filter:blur(12px);
-    animation:rise .45s cubic-bezier(.2,.9,.3,1) both;
-  }
-  @keyframes rise{ from{ transform:translateY(130%); opacity:0 } }
-
-  .install img{ width:38px; height:38px; border-radius:10px; flex:none; }
-  .install .copy{ flex:1 1 auto; min-width:0; line-height:1.3; }
-  .install .copy b{
-    display:block; font-size:14px; font-weight:600; color:var(--bone);
-  }
-  .install .copy span{
-    display:block; font-size:12.5px; color:var(--bone-dim);
-    text-wrap:pretty;
-  }
-  .install button{
-    flex:none; font:inherit; font-size:13.5px; font-weight:600;
-    padding:9px 15px; border-radius:11px; border:0;
-    background:var(--bone); color:#0A1416; cursor:pointer;
-  }
-  .install .x{
-    flex:none; width:30px; height:30px; padding:0;
-    border-radius:50%; background:transparent; color:var(--bone-dim);
-    font-size:19px; line-height:1; border:0; cursor:pointer;
-  }
-  .install :focus-visible{ outline:2px solid var(--bone); outline-offset:2px; }
-  @media (prefers-reduced-motion: reduce){ .install{ animation:none } }
 </style>
-
-<div class="install" id="install" hidden>
-  <img src="icon-192.png" alt="">
-  <div class="copy">
-    <b>Instal·la l'aplicació</b>
-    <span id="installWhy">Pantalla completa, sense connexió.</span>
-  </div>
-  <button id="installGo" type="button">Instal·la</button>
-  <button class="x" id="installNo" type="button" aria-label="Ara no">&times;</button>
-</div>
 
 <script>
 (function () {
   'use strict';
-
-  var standalone =
-    (window.matchMedia && (
-      matchMedia('(display-mode: standalone)').matches ||
-      matchMedia('(display-mode: fullscreen)').matches ||
-      matchMedia('(display-mode: minimal-ui)').matches)) ||
-    navigator.standalone === true;
-
-  /* --- Service worker: arrencada instantania i joc sense connexio --- */
+  /* Service worker: arrencada instantania i joc sense connexio.
+     Cap convit a instal·lar: Chrome ja ofereix "Instal·la l'aplicacio"
+     al seu propi menu, i un cartell nostre a sobre del joc fa nosa. */
   if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('sw.js').catch(function () {});
@@ -602,82 +547,6 @@
       location.reload();
     });
   }
-
-  /* --- Convit a instal·lar -------------------------------------------------
-     Es un suggeriment, no un moble: ha de desapareixer sol i no tornar mai
-     mes un cop l'aplicacio esta instal·lada. A iOS no hi ha cap manera de
-     preguntar si ja ho esta, aixi que el limitem a tres apariciones i prou. */
-  var bar = document.getElementById('install');
-  var why = document.getElementById('installWhy');
-  var go = document.getElementById('installGo');
-  var no = document.getElementById('installNo');
-  var deferred = null;
-  var KEY = 'qc-install-hint';
-  var MAX = 3;
-
-  function readState() {
-    try { return localStorage.getItem(KEY) || ''; } catch (e) { return 'off'; }
-  }
-  function writeState(v) {
-    try { localStorage.setItem(KEY, v); } catch (e) {}
-  }
-  function hide() { bar.hidden = true; }
-  function never() { hide(); writeState('off'); }   // no tornar a oferir-ho mai
-
-  function show() {
-    var seen = parseInt(readState(), 10) || 0;
-    if (readState() === 'off' || seen >= MAX) return;
-    writeState(String(seen + 1));
-    bar.hidden = false;
-    setTimeout(function () { if (!bar.hidden) hide(); }, 9000);
-  }
-
-  // Dins d'un marc (una previsualitzacio) no es pot instal·lar: no molestem.
-  var topLevel = (function () { try { return window.top === window.self; } catch (e) { return false; } })();
-  var iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-  // Si alguna vegada s'obre com a aplicacio, el convit ja no te sentit.
-  if (standalone) {
-    never();
-  } else if (topLevel && readState() !== 'off') {
-    window.addEventListener('beforeinstallprompt', function (e) {
-      e.preventDefault();      // volem el nostre boto, no el de Chrome
-      deferred = e;
-      show();
-    });
-    if (iOS) {
-      why.textContent = 'Comparteix \u2192 Afegeix a la pantalla d\u2019inici.';
-      go.hidden = true;
-      setTimeout(show, 1400);
-    }
-  }
-
-  // Si el sistema passa la finestra a mode aplicacio amb la pagina oberta.
-  ['standalone', 'fullscreen', 'minimal-ui'].forEach(function (mode) {
-    try {
-      matchMedia('(display-mode: ' + mode + ')')
-        .addEventListener('change', function (e) { if (e.matches) never(); });
-    } catch (e) {}
-  });
-
-  // Jugar mana: al primer dit, el convit marxa de la pantalla.
-  document.addEventListener('pointerdown', function (e) {
-    if (!bar.hidden && !bar.contains(e.target)) hide();
-  }, true);
-
-  go.addEventListener('click', function () {
-    hide();
-    if (!deferred) return;
-    deferred.prompt();
-    deferred.userChoice.then(function (r) {
-      if (r && r.outcome === 'accepted') never();
-      deferred = null;
-    }).catch(function () {});
-  });
-  no.addEventListener('click', never);
-
-  window.addEventListener('appinstalled', never);
 })();
 </script>
 </body>
